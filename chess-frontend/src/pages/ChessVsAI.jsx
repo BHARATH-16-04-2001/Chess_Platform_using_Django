@@ -25,6 +25,9 @@ const ChessVsAI = () => {
   const [showSettings, setShowSettings] = useState(false);
   const [boardSize, setBoardSize] = useState(500);
 
+  const [statusMessage, setStatusMessage] = useState('');
+
+
   useEffect(() => {
     const updateSize = () => {
       const width = window.innerWidth;
@@ -37,46 +40,126 @@ const ChessVsAI = () => {
     return () => window.removeEventListener("resize", updateSize);
   }, []);
 
+  // const makeAMove = async (move) => {
+  //   const tempGame = new Chess(game.fen());
+  //   const result = tempGame.move(move);
+  //   if (!result) return false;
+
+  //   const from = result.from;
+  //   const to = result.to;
+  //   const piece = getPieceName(result.piece);
+  //   const isCapture = result.flags.includes('c') ? ' (capture)' : '';
+  //   const playerMoveDesc = `You - ${piece}: ${from} → ${to}${isCapture}`;
+
+  //   setMoveHistory(prev => [...prev, { move: playerMoveDesc, moveData: { from, to } }]);
+  //   setGame(new Chess(tempGame.fen()));
+  //   setSquareStyles({});
+  //   setSelectedSquare(null);
+
+  //   try {
+  //     const res = await axios.post('http://localhost:8000/api/ai-move/', {
+  //       fen: tempGame.fen(),
+  //     });
+
+  //     const aiMove = res.data.move;
+  //     const updatedGame = new Chess(tempGame.fen());
+  //     const aiResult = updatedGame.move({
+  //       from: aiMove.slice(0, 2),
+  //       to: aiMove.slice(2, 4),
+  //     });
+
+  //     const aiPiece = getPieceName(aiResult.piece);
+  //     const aiCapture = aiResult.flags.includes('c') ? ' (capture)' : '';
+  //     const aiMoveDesc = `AI - ${aiPiece}: ${aiResult.from} → ${aiResult.to}${aiCapture}`;
+
+  //     setMoveHistory(prev => [...prev, { move: aiMoveDesc, moveData: { from: aiResult.from, to: aiResult.to } }]);
+  //     setGame(updatedGame);
+  //   } catch (err) {
+  //     console.error('AI move failed:', err);
+  //   }
+
+  //   return true;
+  // };
+
   const makeAMove = async (move) => {
-    const tempGame = new Chess(game.fen());
-    const result = tempGame.move(move);
-    if (!result) return false;
+  if (game.isGameOver()) {
+    setStatusMessage("Game over.");
+    return false;
+  }
 
-    const from = result.from;
-    const to = result.to;
-    const piece = getPieceName(result.piece);
-    const isCapture = result.flags.includes('c') ? ' (capture)' : '';
-    const playerMoveDesc = `You - ${piece}: ${from} → ${to}${isCapture}`;
+  const tempGame = new Chess(game.fen());
+  const result = tempGame.move(move);
+  if (!result) return false;
 
-    setMoveHistory(prev => [...prev, { move: playerMoveDesc, moveData: { from, to } }]);
-    setGame(new Chess(tempGame.fen()));
-    setSquareStyles({});
-    setSelectedSquare(null);
+  const from = result.from;
+  const to = result.to;
+  const piece = getPieceName(result.piece);
+  const isCapture = result.flags.includes('c') ? ' (capture)' : '';
+  const playerMoveDesc = `You - ${piece}: ${from} → ${to}${isCapture}`;
 
-    try {
-      const res = await axios.post('http://localhost:8000/api/ai-move/', {
-        fen: tempGame.fen(),
-      });
+  setMoveHistory(prev => [...prev, { move: playerMoveDesc, moveData: { from, to } }]);
+  setGame(new Chess(tempGame.fen()));
+  setSquareStyles({});
+  setSelectedSquare(null);
 
-      const aiMove = res.data.move;
-      const updatedGame = new Chess(tempGame.fen());
-      const aiResult = updatedGame.move({
-        from: aiMove.slice(0, 2),
-        to: aiMove.slice(2, 4),
-      });
+  if (tempGame.isCheckmate()) {
+    setStatusMessage("Checkmate! You win 🎉");
+    return true;
+  } else if (tempGame.isCheck()) {
+    setStatusMessage("Check to AI ♟️");
+  } else {
+    setStatusMessage('');
+  }
 
-      const aiPiece = getPieceName(aiResult.piece);
-      const aiCapture = aiResult.flags.includes('c') ? ' (capture)' : '';
-      const aiMoveDesc = `AI - ${aiPiece}: ${aiResult.from} → ${aiResult.to}${aiCapture}`;
+  try {
+    const res = await axios.post('http://localhost:8000/api/ai-move/', {
+      fen: tempGame.fen(),
+    });
 
-      setMoveHistory(prev => [...prev, { move: aiMoveDesc, moveData: { from: aiResult.from, to: aiResult.to } }]);
-      setGame(updatedGame);
-    } catch (err) {
-      console.error('AI move failed:', err);
+    if (!res.data || !res.data.move) {
+      console.error("Invalid response from AI backend:", res.data);
+      setStatusMessage("AI move failed (no move returned).");
+      return true;
     }
 
-    return true;
-  };
+    const aiMove = res.data.move;
+    const updatedGame = new Chess(tempGame.fen());
+    const aiResult = updatedGame.move({
+      from: aiMove.slice(0, 2),
+      to: aiMove.slice(2, 4),
+    });
+
+    if (!aiResult) {
+      console.error("Invalid AI move attempted:", aiMove);
+      setStatusMessage("AI made an invalid move.");
+      return true;
+    }
+
+    const aiPiece = getPieceName(aiResult.piece);
+    const aiCapture = aiResult.flags.includes('c') ? ' (capture)' : '';
+    const aiMoveDesc = `AI - ${aiPiece}: ${aiResult.from} → ${aiResult.to}${aiCapture}`;
+
+    setMoveHistory(prev => [...prev, { move: aiMoveDesc, moveData: { from: aiResult.from, to: aiResult.to } }]);
+    setGame(updatedGame);
+
+    if (updatedGame.isCheckmate()) {
+      setStatusMessage("Checkmate! AI wins 🧠");
+    } else if (updatedGame.isCheck()) {
+      setStatusMessage("Check to You ⚠️");
+    } else if (updatedGame.isDraw()) {
+      setStatusMessage("Game drawn 🤝");
+    } else {
+      setStatusMessage('');
+    }
+
+  } catch (err) {
+    console.error('AI move failed:', err);
+    setStatusMessage("Failed to fetch AI move.");
+  }
+
+  return true;
+};
+
 
   const handleTapMove = (square) => {
     if (selectedSquare) {
@@ -141,6 +224,8 @@ const ChessVsAI = () => {
   return (
     <div style={styles.container}>
       <h1 style={styles.heading}>♟️ Play Against AI</h1>
+      {statusMessage && <div style={styles.statusMessage}>{statusMessage}</div>}
+
 
       <div style={styles.settingsIcon}>
         <button style={styles.iconButton} onClick={() => setShowSettings(!showSettings)}>⚙️</button>
@@ -276,6 +361,14 @@ const styles = {
     padding: '10px',
     borderTop: '1px solid #ccc',
   },
+
+  statusMessage: {
+  fontSize: '18px',
+  fontWeight: 'bold',
+  color: '#c0392b',
+  marginBottom: '10px',
+},
+
 };
 
 export default ChessVsAI;
